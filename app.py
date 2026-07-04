@@ -17,11 +17,17 @@ sheet = cliente.open_by_url("https://docs.google.com/spreadsheets/d/1qQQtqJu5Qji
 ws_inventario = sheet.worksheet("Inventario")
 ws_ventas = sheet.worksheet("Ventas")
 
-# --- Obtener productos disponibles ---
+# --- Obtener productos del Inventario ---
 datos_inventario = ws_inventario.get_all_records()
-# Creamos un diccionario para mapear Nombre -> Fila y Cantidad
-mapa_inventario = {fila['Perfume']: {'fila': i + 2, 'stock': fila['Cantidad']} 
-                   for i, fila in enumerate(datos_inventario)}
+# Creamos un diccionario donde la llave es el nombre y guardamos toda la info necesaria
+mapa_productos = {
+    fila['Perfume']: {
+        'fila': i + 2, 
+        'stock': fila['Cantidad'], 
+        'precio_venta': fila['Precio_Venta']
+    } 
+    for i, fila in enumerate(datos_inventario)
+}
 
 st.subheader("Registrar Nueva Venta")
 
@@ -30,25 +36,36 @@ with st.form("form_venta_inteligente", clear_on_submit=True):
     
     with col1:
         nombre_cliente = st.text_input("Cliente")
-        # Aquí el selectbox se llena con los perfumes del Inventario
-        perfume_seleccionado = st.selectbox("Perfume", options=list(mapa_inventario.keys()))
+        # El selectbox permite elegir el perfume
+        perfume_seleccionado = st.selectbox("Perfume", options=list(mapa_productos.keys()))
+        
+        # Recuperamos el precio del perfume seleccionado
+        precio_unitario = mapa_productos[perfume_seleccionado]['precio_venta']
+        
         cantidad = st.number_input("Cantidad a vender", min_value=1, step=1)
+        
+        # Calculamos el total esperado automáticamente
+        total_calculado = cantidad * precio_unitario
+        st.write(f"**Precio unitario:** ${precio_unitario}")
+        
         tipo_pago = st.selectbox("Tipo_Pago", ["Efectivo", "Crédito"])
-        abono1 = st.number_input("Abono_1", min_value=0.0)
-        fecha_abono1 = st.date_input("Fecha_Abono_1", value=datetime.now())
 
     with col2:
+        abono1 = st.number_input("Abono_1", min_value=0.0)
+        fecha_abono1 = st.date_input("Fecha_Abono_1", value=datetime.now())
         abono2 = st.number_input("Abono_2", min_value=0.0)
         fecha_abono2 = st.date_input("Fecha_Abno_2", value=datetime.now())
-        pago_total = st.number_input("Pago_Total", min_value=0.0)
-        pendiente = st.number_input("Pendiente", min_value=0.0)
+        
+        # Mostramos el total calculado
+        pago_total = st.number_input("Pago_Total", value=float(total_calculado))
+        pendiente = st.number_input("Pendiente", value=float(total_calculado - (abono1 + abono2)))
         estado = st.selectbox("Estado", ["Pagado", "Pendiente"])
 
-    submit_btn = st.form_submit_button("Confirmar Venta y Descontar Stock")
+    submit_btn = st.form_submit_button("Confirmar Venta")
 
     if submit_btn:
-        stock_actual = mapa_inventario[perfume_seleccionado]['stock']
-        fila_inv = mapa_inventario[perfume_seleccionado]['fila']
+        stock_actual = mapa_productos[perfume_seleccionado]['stock']
+        fila_inv = mapa_productos[perfume_seleccionado]['fila']
         
         if stock_actual >= cantidad:
             # 1. Descontar en Inventario
@@ -61,7 +78,7 @@ with st.form("form_venta_inteligente", clear_on_submit=True):
             ]
             ws_ventas.append_row(fila_ventas)
             
-            st.success(f"Venta realizada. Stock de {perfume_seleccionado} actualizado.")
+            st.success(f"Venta registrada: {cantidad} x {perfume_seleccionado}. Inventario actualizado.")
             st.rerun()
         else:
-            st.error(f"Error: Solo quedan {stock_actual} unidades de {perfume_seleccionado}.")
+            st.error(f"Error: Solo quedan {stock_actual} unidades.")
