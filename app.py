@@ -14,19 +14,25 @@ def conectar_sheet():
 
 cliente = conectar_sheet()
 sheet = cliente.open_by_url("https://docs.google.com/spreadsheets/d/1qQQtqJu5Qjisa-kN3Q3_zkuEb1wl010-Y5y9kyQOAiI/edit")
-ws_ventas = sheet.worksheet("Ventas")
 ws_inventario = sheet.worksheet("Inventario")
+ws_ventas = sheet.worksheet("Ventas")
+
+# --- Obtener productos disponibles ---
+datos_inventario = ws_inventario.get_all_records()
+# Creamos un diccionario para mapear Nombre -> Fila y Cantidad
+mapa_inventario = {fila['Perfume']: {'fila': i + 2, 'stock': fila['Cantidad']} 
+                   for i, fila in enumerate(datos_inventario)}
 
 st.subheader("Registrar Nueva Venta")
 
-# --- Formulario de Venta ---
-with st.form("form_venta_completo", clear_on_submit=True):
+with st.form("form_venta_inteligente", clear_on_submit=True):
     col1, col2 = st.columns(2)
     
     with col1:
         nombre_cliente = st.text_input("Cliente")
-        perfume = st.text_input("Perfume") # O un selectbox si prefieres listar inventario
-        cantidad = st.number_input("Cantidad", min_value=1, step=1)
+        # Aquí el selectbox se llena con los perfumes del Inventario
+        perfume_seleccionado = st.selectbox("Perfume", options=list(mapa_inventario.keys()))
+        cantidad = st.number_input("Cantidad a vender", min_value=1, step=1)
         tipo_pago = st.selectbox("Tipo_Pago", ["Efectivo", "Crédito"])
         abono1 = st.number_input("Abono_1", min_value=0.0)
         fecha_abono1 = st.date_input("Fecha_Abono_1", value=datetime.now())
@@ -38,27 +44,24 @@ with st.form("form_venta_completo", clear_on_submit=True):
         pendiente = st.number_input("Pendiente", min_value=0.0)
         estado = st.selectbox("Estado", ["Pagado", "Pendiente"])
 
-    submit_btn = st.form_submit_button("Registrar en Sheet")
+    submit_btn = st.form_submit_button("Confirmar Venta y Descontar Stock")
 
     if submit_btn:
-        # Preparar lista de datos en el orden exacto de tus columnas:
-        # Cliente, Cantidad, Perfume, Tipo_Pago, Abono_1, Fecha_Abono_1, Abono_2, Fecha_Abno_2, Pago_Total, Pendiente, Estado
-        fila_datos = [
-            nombre_cliente, 
-            cantidad, 
-            perfume, 
-            tipo_pago, 
-            abono1, 
-            str(fecha_abono1), 
-            abono2, 
-            str(fecha_abono2), 
-            pago_total, 
-            pendiente, 
-            estado
-        ]
+        stock_actual = mapa_inventario[perfume_seleccionado]['stock']
+        fila_inv = mapa_inventario[perfume_seleccionado]['fila']
         
-        try:
-            ws_ventas.append_row(fila_datos)
-            st.success("Venta registrada exitosamente en el Sheet.")
-        except Exception as e:
-            st.error(f"Error al guardar: {e}")
+        if stock_actual >= cantidad:
+            # 1. Descontar en Inventario
+            ws_inventario.update_cell(fila_inv, 1, stock_actual - cantidad)
+            
+            # 2. Registrar en Ventas
+            fila_ventas = [
+                nombre_cliente, cantidad, perfume_seleccionado, tipo_pago, abono1, 
+                str(fecha_abono1), abono2, str(fecha_abono2), pago_total, pendiente, estado
+            ]
+            ws_ventas.append_row(fila_ventas)
+            
+            st.success(f"Venta realizada. Stock de {perfume_seleccionado} actualizado.")
+            st.rerun()
+        else:
+            st.error(f"Error: Solo quedan {stock_actual} unidades de {perfume_seleccionado}.")
