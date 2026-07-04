@@ -7,29 +7,34 @@ from datetime import datetime
 # --- CONFIGURACIÓN ---
 st.set_page_config(page_title="Control Extasis", layout="wide")
 
-@st.cache_data(ttl=60)
-def conectar_sheet():
+# Conexión simplificada y robusta
+@st.cache_resource
+def get_gspread_client():
     creds_dict = st.secrets["gcp_service_account"]
-    creds = Credentials.from_service_account_info(creds_dict, scopes=[
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive"
-    ])
+    creds = Credentials.from_service_account_info(
+        creds_dict, 
+        scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+    )
     return gspread.authorize(creds)
 
 # --- CONEXIÓN Y DATOS ---
-cliente = conectar_sheet()
-sheet_doc = cliente.open_by_url("https://docs.google.com/spreadsheets/d/1qQQtqJu5Qjisa-kN3Q3_zkuEb1wl010-Y5y9kyQOAiI/edit")
-ws_inventario = sheet_doc.worksheet("Inventario")
-ws_ventas = sheet_doc.worksheet("Ventas")
+try:
+    cliente = get_gspread_client()
+    sheet_doc = cliente.open_by_url("https://docs.google.com/spreadsheets/d/1qQQtqJu5Qjisa-kN3Q3_zkuEb1wl010-Y5y9kyQOAiI/edit")
+    ws_inventario = sheet_doc.worksheet("Inventario")
+    ws_ventas = sheet_doc.worksheet("Ventas")
 
-df_inv = pd.DataFrame(ws_inventario.get_all_records())
-mapa_productos = {}
-for i, row in df_inv.iterrows():
-    mapa_productos[row['Perfume']] = {
-        'stock': int(row['Cantidad']),
-        'precio_venta': float(row['Precio_Venta']),
-        'fila': i + 2
-    }
+    df_inv = pd.DataFrame(ws_inventario.get_all_records())
+    mapa_productos = {}
+    for i, row in df_inv.iterrows():
+        mapa_productos[row['Perfume']] = {
+            'stock': int(row['Cantidad']),
+            'precio_venta': float(row['Precio_Venta']),
+            'fila': i + 2
+        }
+except Exception as e:
+    st.error(f"Error de conexión: {e}")
+    st.stop()
 
 # --- INTERFAZ ---
 st.title("📦 Extasis - Gestión de Negocio")
